@@ -49,11 +49,16 @@ login de serviço que a API tem é o de lojista, que também pode gravar em `/pr
 
 ## Conectar o Claude Code
 
-**Pelo portal:** a aba Plataformas > Funcionalidades tem o botão **Conectar MCP**, que mostra o comando pronto (com o token)
-e um botão de copiar. Só DEV e ADM veem (`GET /funcionalidades/mcp` na API devolve 403 aos demais). O comando sai da
-configuração da API, não do código do portal: defina `MCP_FUNCIONALIDADES_URL` (o endereço do `/mcp`, como
-`https://mcp.citelsoftware.com.br/mcp`) e `MCP_FUNCIONALIDADES_TOKEN` (o mesmo `MCP_TOKEN` deste servidor) no ambiente da API.
-Para trocar o token, mude as duas variáveis (a do MCP e a da API); o portal não precisa ser publicado de novo.
+**Pelo portal:** a aba Plataformas > Funcionalidades tem o botão **Conectar MCP**, que mostra o comando pronto (com o
+token) e um botão de copiar. Quem entrega é este servidor, em `GET /conexao`: o portal manda o JWT de quem está logado (o
+nginx do portal repassa `/mcp-conexao` para cá, mantendo o `Authorization`), o MCP pergunta à API do Monint, em
+`GET /usuarios/me`, qual é o perfil, e só devolve `{nome, url, token}` a **DEV** e **ADM**. Os demais levam 403.
+
+- Variáveis: `MONITORAMENTO_API_URL` (a API do Monint, sem barra no fim) e `MCP_URL_PUBLICA` (o compose monta como
+  `https://${MCP_HOST}/mcp`; sem ela, vale `http://localhost:PORTA/mcp`). O token entregue é o próprio `MCP_TOKEN`: para trocá-lo,
+  mude só essa variável e reinicie o MCP; nada na API nem no portal.
+- Sem `MONITORAMENTO_API_URL`, o MCP funciona normalmente, mas o botão responde que não está configurado (503).
+- Se o MCP estiver fora do ar, o portal avisa e mostra o que conferir. Cada consulta fica no log, com o e-mail de quem pediu.
 
 **À mão:**
 
@@ -84,3 +89,6 @@ npm install
 npm run build
 MCP_TOKEN=<32+ caracteres> DB_HOST=... DB_NAME=... DB_USER=mcp_func DB_PASSWORD=... npm start
 ```
+
+O `npm start` lê o `.env` da pasta (`node --env-file=.env`, Node 20.6+), então o token e o banco vêm de lá; sem o arquivo, ele para com
+erro. O `.env` não vai para o git. No Docker o container roda `node dist/index.js` direto, com as variáveis do compose.

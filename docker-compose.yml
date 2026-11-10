@@ -13,6 +13,10 @@ services:
       - DB_NAME=${DB_NAME:?defina DB_NAME}
       - DB_USER=${DB_USER:?defina DB_USER}
       - DB_PASSWORD=${DB_PASSWORD:?defina DB_PASSWORD}
+      # Botão "Conectar MCP" do portal. A URL é a que o Claude usa; a API é só consultada para saber se quem pede o token é
+      # DEV ou ADM (GET /usuarios/me). Sem MONITORAMENTO_API_URL o MCP funciona, mas o botão responde que não está configurado.
+      - MCP_URL_PUBLICA=https://${MCP_HOST:?defina MCP_HOST}/mcp
+      - MONITORAMENTO_API_URL=${MONITORAMENTO_API_URL:-}
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=network_traefik"

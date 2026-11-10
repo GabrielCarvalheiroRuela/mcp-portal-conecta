@@ -24,6 +24,13 @@ function tokenValido(cabecalho: string | undefined): boolean {
   return m !== null && timingSafeEqual(sha256(m[1]), HASH_TOKEN)
 }
 
+const porta = Number(process.env.PORT ?? 3002)
+
+// Para a tela "Conectar MCP" do portal. URL_PUBLICA é o endereço do /mcp como o Claude o enxerga (o compose monta a partir
+// do MCP_HOST); API_URL é a API do Monint, que o MCP consulta só para saber o perfil de quem pede o token.
+const URL_PUBLICA = process.env.MCP_URL_PUBLICA || `http://localhost:${porta}/mcp`
+const API_URL = (process.env.MONITORAMENTO_API_URL ?? '').replace(/\/+$/, '')
+
 const app = express()
 app.disable('x-powered-by')
 
@@ -37,6 +44,49 @@ app.get('/health', (_req, res) => {
 // é o que o Docker usa para decidir se reinicia o container.
 app.get('/status', async (_req, res) => {
   res.set('Cache-Control', 'no-store').json({ mcp: true, banco: await bancoDisponivel() })
+})
+
+// Como conectar o Claude a este servidor: a URL e o token. É uma credencial, então só sai para DEV e ADM. O portal manda o
+// JWT do Monint de quem está logado; o MCP não o valida sozinho (não tem o segredo de assinatura): pergunta à API, em
+// /usuarios/me, que lê o perfil no banco a cada chamada e devolve 403 a lojista e a token inválido.
+app.get('/conexao', async (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  const autorizacao = req.header('authorization')
+  if (!/^Bearer .+/.test(autorizacao ?? '')) {
+    res.status(401).json({ error: 'Faça login no portal para ver a conexão do MCP.' })
+    return
+  }
+  if (!API_URL) {
+    res.status(503).json({ error: 'O MCP não está configurado para conferir o seu perfil (falta MONITORAMENTO_API_URL).' })
+    return
+  }
+
+  let usuario: { email?: string; perfil?: string }
+  try {
+    const resposta = await fetch(`${API_URL}/usuarios/me`, {
+      headers: { Authorization: autorizacao! },
+      signal: AbortSignal.timeout(5000),
+    })
+    if (resposta.status === 401 || resposta.status === 403) {
+      res.status(401).json({ error: 'Sessão inválida. Entre novamente no portal.' })
+      return
+    }
+    if (!resposta.ok) {
+      throw new Error(`/usuarios/me respondeu ${resposta.status}`)
+    }
+    usuario = (await resposta.json()) as { email?: string; perfil?: string }
+  } catch (e) {
+    console.error('Não foi possível conferir o perfil na API:', e)
+    res.status(503).json({ error: 'Não foi possível conferir o seu perfil: a API de monitoramento não respondeu.' })
+    return
+  }
+
+  if (usuario.perfil !== 'DEV' && usuario.perfil !== 'ADM') {
+    res.status(403).json({ error: 'Só os perfis DEV e ADM podem ver a conexão do MCP.' })
+    return
+  }
+  console.log(`Conexão do MCP consultada por ${usuario.email ?? '(sem e-mail)'}`)
+  res.json({ nome: 'funcionalidades', url: URL_PUBLICA, token: TOKEN })
 })
 
 app.use('/mcp', (req, res, next) => {
@@ -76,8 +126,7 @@ const somentePost: express.RequestHandler = (_req, res) => {
 app.get('/mcp', somentePost)
 app.delete('/mcp', somentePost)
 
-const porta = Number(process.env.PORT ?? 3002)
-const http = app.listen(porta, () => console.log(`MCP de funcionalidades na porta ${porta}`))
+const http =app.listen(porta, () => console.log(`MCP de funcionalidades na porta ${porta}`))
 
 function encerrar() {
   http.close(() => void encerrarBanco().finally(() => process.exit(0)))
