@@ -1,0 +1,29 @@
+services:
+  mcp-funcionalidades:
+    build: .
+    pull_policy: build
+    container_name: mcp-funcionalidades
+    restart: unless-stopped
+    environment:
+      # Token que o Claude manda no cabeçalho Authorization. Gere com: openssl rand -hex 32
+      - MCP_TOKEN=${MCP_TOKEN:?defina MCP_TOKEN}
+      # Banco do Monint (mesmo host e base do DATABASE_URL da API), mas com o usuário mcp_func, que só lê as views.
+      - DB_HOST=${DB_HOST:?defina DB_HOST}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_NAME=${DB_NAME:?defina DB_NAME}
+      - DB_USER=${DB_USER:?defina DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD:?defina DB_PASSWORD}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=network_traefik"
+      - "traefik.http.routers.mcp-funcionalidades-router.rule=Host(`${MCP_HOST:?defina MCP_HOST}`)"
+      - "traefik.http.routers.mcp-funcionalidades-router.entrypoints=websecure"
+      - "traefik.http.routers.mcp-funcionalidades-router.tls=true"
+      - "traefik.http.routers.mcp-funcionalidades-router.tls.certresolver=tlschallenge"
+      - "traefik.http.services.mcp-funcionalidades-service.loadbalancer.server.port=3002"
+    networks:
+      - network_traefik
+
+networks:
+  network_traefik:
+    external: true
