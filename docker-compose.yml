@@ -1,6 +1,8 @@
 services:
   mcp-funcionalidades:
-    build: .
+    build:
+      context: .
+      no_cache: true
     pull_policy: build
     container_name: mcp-funcionalidades
     restart: unless-stopped
