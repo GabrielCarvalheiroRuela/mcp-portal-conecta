@@ -26,57 +26,46 @@ login de serviço que a API tem é o de lojista, que também pode gravar em `/pr
   `VW_COBPLA` está liberada para o usuário do MCP. O resultado vale 10 s, então pode ser consultado à vontade. É o que o selo
   "MCP ativo" da aba Funcionalidades do portal mostra (pelo nginx do portal, que repassa `/mcp-status` para cá).
 
+## Onde ele fica
+
+O MCP **não tem endereço público**. Roda só na rede Docker do servidor (`network_traefik`), sem labels do Traefik:
+
+```
+n8n (agente do chat do portal) ──HTTP + Bearer──► mcp-funcionalidades:3002/mcp ──SELECT──► views VW_* do banco
+nginx do portal (/mcp-status, /mcp-conexao) ─────► mcp-funcionalidades:3002
+```
+
+O MCP lê o banco: não deixe a porta 3002 roteada para a internet. Se um dia precisar de acesso de fora (Claude Code nas
+máquinas da equipe), crie o DNS, devolva os labels do Traefik e preencha `MCP_URL_PUBLICA`.
+
 ## Subir no servidor
 
 1. **Banco.** Rode `monitoramento-pedpen/sql/003_funcionalidades.sql` (um comando por vez) e, no fim dele, crie o
    usuário `mcp_func` (passo 8, está comentado).
-2. **DNS.** Crie um registro para o endereço do MCP (ex.: `mcp.citelsoftware.com.br`) apontando para o servidor
-   onde roda o Traefik. Sem isso o certificado (`tlschallenge`) não sai.
-3. **Variáveis.** Copie `.env.example` para `.env`, ou cadastre as mesmas variáveis na stack do Portainer.
-   O token: `openssl rand -hex 32`.
-4. **Subir.**
+2. **Variáveis.** Copie `.env.example` para `.env`, ou cadastre as mesmas variáveis na stack do Portainer.
+   O token: `openssl rand -hex 32`. Deixe `MCP_URL_PUBLICA` vazio.
+3. **Subir.**
 
    ```bash
    docker compose up -d --build
    ```
 
-5. **Conferir.**
+4. **Conferir**, de dentro de um container da mesma rede (ex.: o do portal):
 
    ```bash
-   curl -s https://mcp.citelsoftware.com.br/health
-   curl -s -o /dev/null -w "%{http_code}\n" -X POST https://mcp.citelsoftware.com.br/mcp   # 401 sem token
+   wget -qO- http://mcp-funcionalidades:3002/health
    ```
+
+   Pelo portal, o selo "MCP ativo" da aba Funcionalidades usa o `/status`.
 
 ## Conectar o Claude Code
 
-**Pelo portal:** a aba Plataformas > Funcionalidades tem o botão **Conectar MCP**, que mostra o comando pronto (com o
-token) e um botão de copiar. Quem entrega é este servidor, em `GET /conexao`: o portal manda o JWT de quem está logado (o
-nginx do portal repassa `/mcp-conexao` para cá, mantendo o `Authorization`), o MCP pergunta à API do Monint, em
-`GET /usuarios/me`, qual é o perfil, e só devolve `{nome, url, token}` a **DEV** e **ADM**. Os demais levam 403.
+Sem endereço público, o botão **Conectar MCP** do portal responde que o MCP só atende a rede interna (503): não existe
+URL que funcione fora do servidor. O `GET /conexao` continua conferindo o perfil DEV/ADM na API do Monint
+(`GET /usuarios/me`) e volta a entregar `{nome, url, token}` quando `MCP_URL_PUBLICA` for preenchido.
 
-- Variáveis: `MONITORAMENTO_API_URL` (a API do Monint, sem barra no fim) e `MCP_URL_PUBLICA` (o compose monta como
-  `https://${MCP_HOST}/mcp`; sem ela, vale `http://localhost:PORTA/mcp`). O token entregue é o próprio `MCP_TOKEN`: para trocá-lo,
-  mude só essa variável e reinicie o MCP; nada na API nem no portal.
-- Sem `MONITORAMENTO_API_URL`, o MCP funciona normalmente, mas o botão responde que não está configurado (503).
-- Se o MCP estiver fora do ar, o portal avisa e mostra o que conferir. Cada consulta fica no log, com o e-mail de quem pediu.
-
-**À mão:**
-
-Guarde o token numa variável de ambiente de cada pessoa e use um `.mcp.json` no projeto (sem o token dentro):
-
-```json
-{
-  "mcpServers": {
-    "funcionalidades": {
-      "type": "http",
-      "url": "https://mcp.citelsoftware.com.br/mcp",
-      "headers": { "Authorization": "Bearer ${FUNCIONALIDADES_MCP_TOKEN}" }
-    }
-  }
-}
-```
-
-Ou, só para você: `claude mcp add --transport http funcionalidades https://mcp.citelsoftware.com.br/mcp --header "Authorization: Bearer <token>"`.
+Na sua máquina, com `npm start` (porta 3002), dá para conectar o Claude Code ao MCP local:
+`claude mcp add --transport http funcionalidades http://localhost:3002/mcp --header "Authorization: Bearer <token>"`.
 
 ## Trocar o token ou a senha do banco
 

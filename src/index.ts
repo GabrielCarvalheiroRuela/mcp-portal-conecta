@@ -26,9 +26,11 @@ function tokenValido(cabecalho: string | undefined): boolean {
 
 const porta = Number(process.env.PORT ?? 3002)
 
-// Para a tela "Conectar MCP" do portal. URL_PUBLICA é o endereço do /mcp como o Claude o enxerga (o compose monta a partir
-// do MCP_HOST); API_URL é a API do Monint, que o MCP consulta só para saber o perfil de quem pede o token.
-const URL_PUBLICA = process.env.MCP_URL_PUBLICA || `http://localhost:${porta}/mcp`
+// Para a tela "Conectar MCP" do portal. URL_PUBLICA é o endereço do /mcp como o Claude o enxerga; API_URL é a API do
+// Monint, que o MCP consulta só para saber o perfil de quem pede o token. Sem a variável (npm start na máquina), vale o
+// localhost. No servidor o MCP só atende a rede Docker, então o compose a deixa VAZIA e o /conexao responde 503 em vez
+// de entregar um endereço que ninguém de fora alcança.
+const URL_PUBLICA = process.env.MCP_URL_PUBLICA ?? `http://localhost:${porta}/mcp`
 const API_URL = (process.env.MONITORAMENTO_API_URL ?? '').replace(/\/+$/, '')
 
 const app = express()
@@ -54,6 +56,10 @@ app.get('/conexao', async (req, res) => {
   const autorizacao = req.header('authorization')
   if (!/^Bearer .+/.test(autorizacao ?? '')) {
     res.status(401).json({ error: 'Faça login no portal para ver a conexão do MCP.' })
+    return
+  }
+  if (!URL_PUBLICA) {
+    res.status(503).json({ error: 'Este MCP não tem endereço público: ele só atende a rede interna do servidor (n8n e portal).' })
     return
   }
   if (!API_URL) {

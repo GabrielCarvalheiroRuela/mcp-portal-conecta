@@ -13,18 +13,16 @@ services:
       - DB_NAME=${DB_NAME:?defina DB_NAME}
       - DB_USER=${DB_USER:?defina DB_USER}
       - DB_PASSWORD=${DB_PASSWORD:?defina DB_PASSWORD}
-      # Botão "Conectar MCP" do portal. A URL é a que o Claude usa; a API é só consultada para saber se quem pede o token é
-      # DEV ou ADM (GET /usuarios/me). Sem MONITORAMENTO_API_URL o MCP funciona, mas o botão responde que não está configurado.
-      - MCP_URL_PUBLICA=https://${MCP_HOST:?defina MCP_HOST}/mcp
+      # Botão "Conectar MCP" do portal: o MCP não tem endereço público (só a rede Docker), então fica vazio e o botão
+      # responde que não há como conectar de fora. Se um dia ganhar DNS, preencha com https://<host>/mcp e devolva os
+      # labels do Traefik.
+      - MCP_URL_PUBLICA=${MCP_URL_PUBLICA:-}
       - MONITORAMENTO_API_URL=${MONITORAMENTO_API_URL:-}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=network_traefik"
-      - "traefik.http.routers.mcp-funcionalidades-router.rule=Host(`${MCP_HOST:?defina MCP_HOST}`)"
-      - "traefik.http.routers.mcp-funcionalidades-router.entrypoints=websecure"
-      - "traefik.http.routers.mcp-funcionalidades-router.tls=true"
-      - "traefik.http.routers.mcp-funcionalidades-router.tls.certresolver=tlschallenge"
-      - "traefik.http.services.mcp-funcionalidades-service.loadbalancer.server.port=3002"
+    # Sem labels do Traefik de propósito: o MCP lê o banco e não deve ser roteado para a internet. Quem fala com ele são
+    # o n8n (http://mcp-funcionalidades:3002/mcp, com o Bearer) e o nginx do portal (/mcp-status e /mcp-conexao), todos
+    # na network_traefik.
+    expose:
+      - "3002"
     networks:
       - network_traefik
 
